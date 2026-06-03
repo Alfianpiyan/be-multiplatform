@@ -15,7 +15,11 @@ export const register = async (req, res) => {
         } = req.body;
 
         const [checkEmail] = await db.query(
-            "SELECT * FROM users WHERE email = ?",
+            `
+            SELECT id
+            FROM users
+            WHERE email = ?
+            `,
             [email]
         );
 
@@ -25,18 +29,29 @@ export const register = async (req, res) => {
             });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(
+            password,
+            10
+        );
 
         await db.query(
-            `INSERT INTO users 
-            (userName, email, password, telepon, alamat)
-            VALUES (?, ?, ?, ?, ?)`,
+            `
+            INSERT INTO users
+            (
+                userName,
+                email,
+                password,
+                telepon,
+                alamat
+            )
+            VALUES (?, ?, ?, ?, ?)
+            `,
             [
                 userName,
                 email,
                 hashedPassword,
-                telepon,
-                alamat
+                telepon || null,
+                alamat || null
             ]
         );
 
@@ -64,7 +79,17 @@ export const login = async (req, res) => {
         } = req.body;
 
         const [users] = await db.query(
-            "SELECT * FROM users WHERE email = ?",
+            `
+            SELECT
+                id,
+                userName,
+                email,
+                password,
+                role,
+                city
+            FROM users
+            WHERE email = ?
+            `,
             [email]
         );
 
@@ -90,11 +115,12 @@ export const login = async (req, res) => {
         const token = jwt.sign(
             {
                 id: user.id,
-                role: user.role
+                role: user.role,
+                city: user.city
             },
             process.env.JWT_SECRET,
             {
-                expiresIn: "7d"
+                expiresIn: "1d"
             }
         );
 
@@ -105,7 +131,8 @@ export const login = async (req, res) => {
                 id: user.id,
                 userName: user.userName,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                city: user.city
             }
         });
 

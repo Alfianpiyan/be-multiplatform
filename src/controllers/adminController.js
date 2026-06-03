@@ -9,7 +9,8 @@ export const createAdmin = async (req, res) => {
             userName,
             email,
             password,
-            role
+            role,
+            city
         } = req.body;
 
         if (
@@ -35,6 +36,12 @@ export const createAdmin = async (req, res) => {
             });
         }
 
+        if (!city) {
+            return res.status(400).json({
+                message: "City wajib diisi"
+            });
+        }
+
         const hashedPassword = await bcrypt.hash(
             password,
             10
@@ -47,15 +54,17 @@ export const createAdmin = async (req, res) => {
                 userName,
                 email,
                 password,
-                role
+                role,
+                city
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             `,
             [
                 userName,
                 email,
                 hashedPassword,
-                role
+                role,
+                city
             ]
         );
 
@@ -82,9 +91,9 @@ export const getAllLaporan = async (req, res) => {
             SELECT
                 laporan.id,
                 laporan.title,
-                laporan.description,
+                laporan.report_description,
+                laporan.city,
                 laporan.status,
-                laporan.priority,
                 laporan.visibility,
                 laporan.created_at,
 
@@ -100,10 +109,12 @@ export const getAllLaporan = async (req, res) => {
             LEFT JOIN kategori
                 ON laporan.kategori_id = kategori.id
 
-            WHERE laporan.status != 'draft'
+            WHERE laporan.city = ?
+            AND laporan.status != 'draft'
 
             ORDER BY laporan.created_at DESC
-            `
+            `,
+            [req.user.city]
         );
 
         res.status(200).json({
@@ -160,6 +171,13 @@ export const updateStatusLaporan = async (req, res) => {
                 message: "Laporan tidak ditemukan"
             });
         }
+
+        if (laporan[0].city !== req.user.city) {
+            return res.status(403).json({
+                message: "Anda tidak bisa mengubah status laporan dari kota lain"
+            });
+        }
+
 
         const oldStatus = laporan[0].status;
 
@@ -264,7 +282,6 @@ export const reviewLaporan = async (req, res) => {
 
         const {
             kategori_id,
-            priority,
             notes
         } = req.body;
 
@@ -282,6 +299,13 @@ export const reviewLaporan = async (req, res) => {
                 message: "Laporan tidak ditemukan"
             });
         }
+
+        if (laporan[0].city !== req.user.city) {
+            return res.status(403).json({
+                message: "Anda tidak bisa mereview laporan dari kota lain"
+            });
+        }
+
 
         if (laporan[0].status === "draft") {
             return res.status(400).json({
@@ -315,7 +339,6 @@ export const reviewLaporan = async (req, res) => {
             UPDATE laporan
             SET
                 kategori_id = ?,
-                priority = ?,
                 status = 'diperiksa',
                 visibility = 'private',
                 updated_at = CURRENT_TIMESTAMP
@@ -323,7 +346,6 @@ export const reviewLaporan = async (req, res) => {
             `,
             [
                 kategori_id,
-                priority,
                 id
             ]
         );
@@ -402,6 +424,12 @@ export const verifyLaporan = async (req, res) => {
         if (laporan.length === 0) {
             return res.status(404).json({
                 message: "Laporan tidak ditemukan"
+            });
+        }
+
+        if (laporan[0].city !== req.user.city) {
+            return res.status(403).json({
+                message: "Anda tidak bisa memverifikasi laporan dari kota lain"
             });
         }
 
@@ -498,6 +526,12 @@ export const rejectLaporan = async (req, res) => {
         if (laporan.length === 0) {
             return res.status(404).json({
                 message: "Laporan tidak ditemukan"
+            });
+        }
+
+        if (laporan[0].city !== req.user.city) {
+            return res.status(403).json({
+                message: "Anda tidak bisa menolak laporan dari kota lain"
             });
         }
 

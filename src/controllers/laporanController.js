@@ -1,16 +1,18 @@
 import db from "../config/db.js";
 
 export const createLaporan = async (req, res) => {
-
     try {
 
         const {
             kategori_id,
             title,
-            description,
-            lokasi_kejadian,
+            report_description,
+            city,
+            location_description,
+            latitude,
+            longitude,
             waktu_kejadian,
-            is_public
+            visibility
         } = req.body;
 
         const [laporan] = await db.query(
@@ -20,21 +22,27 @@ export const createLaporan = async (req, res) => {
                 user_id,
                 kategori_id,
                 title,
-                description,
-                lokasi_kejadian,
+                report_description,
+                city,
+                location_description,
+                latitude,
+                longitude,
                 waktu_kejadian,
-                is_public
+                visibility
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
             [
                 req.user.id,
                 kategori_id || null,
                 title || null,
-                description || null,
-                lokasi_kejadian || null,
+                report_description || null,
+                city || null,
+                location_description || null,
+                latitude || null,
+                longitude || null,
                 waktu_kejadian || null,
-                is_public || false
+                visibility || "private"
             ]
         );
 
@@ -53,7 +61,6 @@ export const createLaporan = async (req, res) => {
         });
 
     }
-
 };
 
 export const getMyDraftLaporan = async (req, res) => {
@@ -65,12 +72,14 @@ export const getMyDraftLaporan = async (req, res) => {
             SELECT
                 laporan.id,
                 laporan.title,
-                laporan.description,
-                laporan.status,
-                laporan.priority,
-                laporan.lokasi_kejadian,
+                laporan.report_description,
+                laporan.city,
+                laporan.location_description,
+                laporan.latitude,
+                laporan.longitude,
                 laporan.waktu_kejadian,
-                laporan.is_public,
+                laporan.status,
+                laporan.visibility,
                 laporan.created_at,
 
                 kategori.kategori
@@ -112,9 +121,13 @@ export const updateDraftLaporan = async (req, res) => {
         const {
             kategori_id,
             title,
-            description,
-            lokasi_kejadian,
-            waktu_kejadian
+            report_description,
+            city,
+            location_description,
+            latitude,
+            longitude,
+            waktu_kejadian,
+            visibility
         } = req.body;
 
         const [laporan] = await db.query(
@@ -153,18 +166,26 @@ export const updateDraftLaporan = async (req, res) => {
             SET
                 kategori_id = ?,
                 title = ?,
-                description = ?,
-                lokasi_kejadian = ?,
+                report_description = ?,
+                city = ?,
+                location_description = ?,
+                latitude = ?,
+                longitude = ?,
                 waktu_kejadian = ?,
+                visibility = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             `,
             [
                 kategori_id || null,
                 title || null,
-                description || null,
-                lokasi_kejadian || null,
+                report_description || null,
+                city || null,
+                location_description || null,
+                latitude || null,
+                longitude || null,
                 waktu_kejadian || null,
+                visibility || "private",
                 id
             ]
         );
@@ -220,7 +241,9 @@ export const submitLaporan = async (req, res) => {
         if (
             !laporan[0].kategori_id ||
             !laporan[0].title ||
-            !laporan[0].description
+            !laporan[0].report_description ||
+            !laporan[0].city ||
+            !laporan[0].location_description
         ) {
             return res.status(400).json({
                 message: "Data laporan belum lengkap"
@@ -236,6 +259,29 @@ export const submitLaporan = async (req, res) => {
             WHERE id = ?
             `,
             [id]
+        );
+
+        await db.query(
+            `
+            INSERT INTO status_laporan
+            (
+                laporan_id,
+                old_status,
+                new_status,
+                changed_by,
+                changer_role,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            `,
+            [
+                id,
+                "draft",
+                "pending",
+                req.user.id,
+                "user",
+                "Laporan berhasil dikirim"
+            ]
         );
 
         res.status(200).json({
@@ -255,15 +301,16 @@ export const submitLaporan = async (req, res) => {
 export const getMyLaporan = async (req, res) => {
 
     try {
-
         const [laporan] = await db.query(
             `
             SELECT
                 laporan.id,
                 laporan.title,
-                laporan.description,
+                laporan.report_description,
+                laporan.city,
+                laporan.location_description,
                 laporan.status,
-                laporan.priority,
+                laporan.visibility,
                 laporan.created_at,
 
                 kategori.kategori
@@ -300,14 +347,15 @@ export const getPublicLaporan = async (req, res) => {
 
     try {
 
-        const [laporan] = await db.query(
+       const [laporan] = await db.query(
             `
             SELECT
                 laporan.id,
                 laporan.title,
-                laporan.description,
+                laporan.report_description,
+                laporan.city,
+                laporan.location_description,
                 laporan.status,
-                laporan.priority,
                 laporan.visibility,
                 laporan.created_at,
 
@@ -422,9 +470,13 @@ export const getDetailLaporan = async (req, res) => {
             SELECT
                 laporan.id,
                 laporan.title,
-                laporan.description,
+                laporan.report_description,
+                laporan.city,
+                laporan.location_description,
+                laporan.latitude,
+                laporan.longitude,
+                laporan.waktu_kejadian,
                 laporan.status,
-                laporan.priority,
                 laporan.visibility,
                 laporan.created_at,
                 laporan.updated_at,
