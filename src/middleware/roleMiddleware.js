@@ -1,4 +1,4 @@
-const roleMiddleware = (...roles) => {
+export const roleMiddleware = (...roles) => {
 
     return (req, res, next) => {
 
@@ -27,5 +27,3 @@ const roleMiddleware = (...roles) => {
     };
 
 };
-
-export default roleMiddleware;

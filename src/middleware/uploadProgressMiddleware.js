@@ -12,7 +12,7 @@ const storage = new CloudinaryStorage({
 
     params: async (req, file) => ({
 
-        folder: "laporan",
+        folder: "progres",
 
         allowed_formats: [
             "jpg",
@@ -26,7 +26,7 @@ const storage = new CloudinaryStorage({
 
 });
 
-const upload = multer({
+const uploadProgress = multer({
 
     storage,
 
@@ -36,4 +36,4 @@ const upload = multer({
 
 });
 
-export default upload;
+export default uploadProgress;

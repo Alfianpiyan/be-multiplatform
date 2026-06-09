@@ -15,6 +15,35 @@ export const createLaporan = async (req, res) => {
             visibility
         } = req.body;
 
+        if (kategori_id) {
+
+        const [kategori] = await db.query(
+                `
+                SELECT *
+                FROM kategori
+                WHERE id = ?
+                `,
+                [kategori_id]
+            );
+
+            if (kategori.length === 0) {
+                return res.status(404).json({
+                    message: "Kategori tidak ditemukan"
+                });
+            }
+
+        }
+
+        if (
+            visibility &&
+            visibility !== "private" &&
+            visibility !== "public"
+        ) {
+            return res.status(400).json({
+                message: "Visibility tidak valid"
+            });
+        }
+
         const [laporan] = await db.query(
             `
             INSERT INTO laporan
@@ -45,6 +74,29 @@ export const createLaporan = async (req, res) => {
                 visibility || "private"
             ]
         );
+
+        if (req.files && req.files.length > 0) {
+
+            for (const file of req.files) {
+
+                await db.query(
+                    `
+                    INSERT INTO laporan_images
+                    (
+                        laporan_id,
+                        image_url
+                    )
+                    VALUES (?, ?)
+                    `,
+                    [
+                        laporan.insertId,
+                        file.path
+                    ]
+                );
+
+            }
+
+        }
 
         res.status(201).json({
             message: "Draft laporan berhasil dibuat",
@@ -158,6 +210,25 @@ export const updateDraftLaporan = async (req, res) => {
             return res.status(400).json({
                 message: "Laporan tidak bisa diedit"
             });
+        }
+
+        if (kategori_id) {
+
+        const [kategori] = await db.query(
+                `
+                SELECT *
+                FROM kategori
+                WHERE id = ?
+                `,
+                [kategori_id]
+            );
+
+            if (kategori.length === 0) {
+                return res.status(404).json({
+                    message: "Kategori tidak ditemukan"
+                });
+            }
+
         }
 
         await db.query(
@@ -283,6 +354,40 @@ export const submitLaporan = async (req, res) => {
                 "Laporan berhasil dikirim"
             ]
         );
+
+        
+        const [admins] = await db.query(
+            `
+            SELECT id
+            FROM users
+            WHERE role = 'admin'
+            AND city = ?
+            `,
+            [laporan[0].city]
+        );
+
+        for (const admin of admins) {
+
+            await db.query(
+                `
+                INSERT INTO notifications
+                (
+                    user_id,
+                    laporan_id,
+                    title,
+                    message
+                )
+                VALUES (?, ?, ?, ?)
+                `,
+                [
+                    admin.id,
+                    id,
+                    "Laporan Baru",
+                    `Ada laporan baru dengan judul "${laporan[0].title}"`
+                ]
+            );
+
+        }
 
         res.status(200).json({
             message: "Laporan berhasil dikirim"
@@ -420,9 +525,35 @@ export const uploadLaporanImages = async (req, res) => {
             });
         }
 
+        if (
+            laporan[0].status !== "draft" &&
+            laporan[0].status !== "pending"
+        ) {
+            return res.status(400).json({
+                message: "Laporan tidak bisa ditambah gambar"
+            });
+        }
+
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({
                 message: "File gambar wajib diupload"
+            });
+        }
+
+        const [images] = await db.query(
+            `
+            SELECT COUNT(*) AS total
+            FROM laporan_images
+            WHERE laporan_id = ?
+            `,
+            [id]
+        );
+
+        if (
+            images[0].total + req.files.length > 5
+        ) {
+            return res.status(400).json({
+                message: "Maksimal 5 gambar"
             });
         }
 
@@ -505,7 +636,8 @@ export const getDetailLaporan = async (req, res) => {
         }
 
         if (
-            laporan[0].visibility !== "public"
+            laporan[0].visibility !== "public" ||
+            laporan[0].status !== "selesai"
         ) {
             return res.status(403).json({
                 message: "Laporan tidak dapat diakses"
@@ -523,11 +655,31 @@ export const getDetailLaporan = async (req, res) => {
             [id]
         );
 
+        const [progressImages] = await db.query(
+            `
+            SELECT
+                id,
+                image_url,
+                description,
+                created_at
+
+            FROM laporan_progress_images
+
+            WHERE laporan_id = ?
+
+            ORDER BY created_at ASC
+            `,
+            [id]
+        );
+
         res.status(200).json({
             message: "Detail laporan berhasil diambil",
             data: {
                 ...laporan[0],
-                images
+
+                before_images: images,
+
+                progress_images: progressImages
             }
         });
 
@@ -540,12 +692,44 @@ export const getDetailLaporan = async (req, res) => {
     }
 
 };
-
 export const getLaporanTimeline = async (req, res) => {
 
     try {
 
         const { id } = req.params;
+        const [laporan] = await db.query(
+            `
+            SELECT *
+            FROM laporan
+            WHERE id = ?
+            `,
+            [id]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+        
+
+        if (
+            req.user.role === "user" &&
+            laporan[0].user_id !== req.user.id
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        if (
+            req.user.role === "admin" &&
+            laporan[0].city !== req.user.city
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
 
         const [timeline] = await db.query(
             `
@@ -630,6 +814,937 @@ export const deleteDraftLaporan = async (req, res) => {
 
         res.status(200).json({
             message: "Draft laporan berhasil dihapus"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const getDetailLaporanPrivate = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const [laporan] = await db.query(
+            `
+            SELECT
+                laporan.*,
+
+                users.userName,
+
+                kategori.kategori
+
+            FROM laporan
+
+            JOIN users
+                ON laporan.user_id = users.id
+
+            LEFT JOIN kategori
+                ON laporan.kategori_id = kategori.id
+
+            WHERE laporan.id = ?
+            `,
+            [id]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+
+        const dataLaporan = laporan[0];
+
+        if (
+            req.user.role === "user" &&
+            dataLaporan.user_id !== req.user.id
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        if (
+            req.user.role === "admin" &&
+            dataLaporan.city !== req.user.city
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        const [images] = await db.query(
+            `
+            SELECT
+                id,
+                image_url
+            FROM laporan_images
+            WHERE laporan_id = ?
+            `,
+            [id]
+        );
+
+        const [timeline] = await db.query(
+            `
+            SELECT
+                status_laporan.*,
+                users.userName
+
+            FROM status_laporan
+
+            JOIN users
+                ON status_laporan.changed_by = users.id
+
+            WHERE laporan_id = ?
+
+            ORDER BY status_laporan.created_at ASC
+            `,
+            [id]
+        );
+
+        const [internalComments] = await db.query(
+            `
+            SELECT
+                komentar_internal.id,
+                komentar_internal.komentar,
+                komentar_internal.created_at,
+                komentar_internal.updated_at,
+
+                users.id AS user_id,
+                users.userName,
+                users.role
+
+            FROM komentar_internal
+
+            JOIN users
+                ON komentar_internal.user_id = users.id
+
+            WHERE komentar_internal.laporan_id = ?
+
+            ORDER BY komentar_internal.created_at ASC
+            `,
+            [id]
+        );
+
+        const [progressImages] = await db.query(
+            `
+            SELECT
+                laporan_progress_images.id,
+                laporan_progress_images.image_url,
+                laporan_progress_images.description,
+                laporan_progress_images.created_at,
+
+                users.id AS uploaded_by,
+                users.userName
+
+            FROM laporan_progress_images
+
+            JOIN users
+                ON laporan_progress_images.uploaded_by = users.id
+
+            WHERE laporan_progress_images.laporan_id = ?
+
+            ORDER BY laporan_progress_images.created_at ASC
+            `,
+            [id]
+        );
+
+        res.status(200).json({
+            message: "Detail laporan berhasil diambil",
+            data: {
+                ...dataLaporan,
+                images,
+                timeline,
+                internal_comments: internalComments,
+                progress_images: progressImages
+            }
+        });
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const getMyDetailLaporan = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const [laporan] = await db.query(
+            `
+            SELECT
+                laporan.id,
+                laporan.title,
+                laporan.report_description,
+                laporan.city,
+                laporan.location_description,
+                laporan.latitude,
+                laporan.longitude,
+                laporan.waktu_kejadian,
+                laporan.status,
+                laporan.visibility,
+                laporan.alasan_penolakan,
+                laporan.created_at,
+                laporan.updated_at,
+
+                kategori.kategori
+
+            FROM laporan
+
+            LEFT JOIN kategori
+                ON laporan.kategori_id = kategori.id
+
+            WHERE laporan.id = ?
+            AND laporan.user_id = ?
+            `,
+            [
+                id,
+                req.user.id
+            ]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+
+        const [images] = await db.query(
+            `
+            SELECT
+                id,
+                image_url
+            FROM laporan_images
+            WHERE laporan_id = ?
+            `,
+            [id]
+        );
+
+        res.status(200).json({
+            message: "Detail laporan berhasil diambil",
+            data: {
+                ...laporan[0],
+                images
+            }
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const createInternalComment = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const { komentar } = req.body;
+
+        if (!komentar) {
+            return res.status(400).json({
+                message: "Komentar wajib diisi"
+            });
+        }
+
+        const [laporan] = await db.query(
+            `
+            SELECT *
+            FROM laporan
+            WHERE id = ?
+            `,
+            [id]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+
+        const dataLaporan = laporan[0];
+
+        if (
+            req.user.role === "user" &&
+            dataLaporan.user_id !== req.user.id
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        if (
+            req.user.role === "admin" &&
+            dataLaporan.city !== req.user.city
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        const allowedStatus = [
+            "diperiksa",
+            "diverifikasi",
+            "tindak_lanjut"
+        ];
+
+        if (
+            !allowedStatus.includes(
+                dataLaporan.status
+            )
+        ) {
+            return res.status(400).json({
+                message:
+                    "Diskusi hanya tersedia saat laporan sedang diproses"
+            });
+        }
+
+        await db.query(
+            `
+            INSERT INTO komentar_internal
+            (
+                laporan_id,
+                user_id,
+                komentar
+            )
+            VALUES (?, ?, ?)
+            `,
+            [
+                id,
+                req.user.id,
+                komentar
+            ]
+        );
+
+        const [sender] = await db.query(
+            `
+            SELECT userName
+            FROM users
+            WHERE id = ?
+            `,
+            [req.user.id]
+        );
+
+        const senderName = sender[0].userName;
+
+        if (req.user.role === "user") {
+
+            const [admins] = await db.query(
+                `
+                SELECT id
+                FROM users
+                WHERE role = 'admin'
+                AND city = ?
+                `,
+                [dataLaporan.city]
+            );
+
+            for (const admin of admins) {
+
+                await db.query(
+                    `
+                    INSERT INTO notifications
+                    (
+                        user_id,
+                        laporan_id,
+                        title,
+                        message
+                    )
+                    VALUES (?, ?, ?, ?)
+                    `,
+                    [
+                        admin.id,
+                        id,
+                        "Komentar Baru",
+                        `${senderName} mengirim komentar pada laporan #${id}`
+                    ]
+                );
+
+            }
+
+        } else {
+
+            await db.query(
+                `
+                INSERT INTO notifications
+                (
+                    user_id,
+                    laporan_id,
+                    title,
+                    message
+                )
+                VALUES (?, ?, ?, ?)
+                `,
+                [
+                    dataLaporan.user_id,
+                    id,
+                    "Balasan Admin",
+                    `${senderName} membalas diskusi laporan Anda`
+                ]
+            );
+
+        }
+
+        res.status(201).json({
+            message: "Komentar berhasil ditambahkan"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const uploadProgressImages = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const [laporan] = await db.query(
+            `
+            SELECT *
+            FROM laporan
+            WHERE id = ?
+            `,
+            [id]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+
+        if (
+            req.user.role !== "admin" &&
+            req.user.role !== "superadmin"
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        if (
+            laporan[0].status !== "tindak_lanjut"
+        ) {
+            return res.status(400).json({
+                message: "Laporan belum masuk tahap tindak lanjut"
+            });
+        }
+
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                message: "Foto wajib diupload"
+            });
+        }
+
+        const { description } = req.body;
+
+        for (const file of req.files) {
+
+            await db.query(
+                `
+                INSERT INTO laporan_progress_images
+                (
+                    laporan_id,
+                    image_url,
+                    description,
+                    uploaded_by
+                )
+                VALUES (?, ?, ?, ?)
+                `,
+                [
+                    id,
+                    file.path,
+                    description || null,
+                    req.user.id
+                ]
+            );
+
+        }
+
+        res.status(201).json({
+            message: "Progress berhasil ditambahkan"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const getProgressImages = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const [progress] = await db.query(
+            `
+            SELECT
+                laporan_progress_images.*,
+
+                users.userName
+
+            FROM laporan_progress_images
+
+            JOIN users
+                ON laporan_progress_images.uploaded_by = users.id
+
+            WHERE laporan_id = ?
+
+            ORDER BY created_at ASC
+            `,
+            [id]
+        );
+
+        res.status(200).json({
+            message: "Progress berhasil diambil",
+            data: progress
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const updateProgressDescription = async (req, res) => {
+
+    try {
+
+        const { progressId } = req.params;
+
+        const { description } = req.body;
+
+        const [progress] = await db.query(
+            `
+            SELECT *
+            FROM laporan_progress_images
+            WHERE id = ?
+            `,
+            [progressId]
+        );
+
+        if (progress.length === 0) {
+            return res.status(404).json({
+                message: "Progress tidak ditemukan"
+            });
+        }
+
+        await db.query(
+            `
+            UPDATE laporan_progress_images
+            SET description = ?
+            WHERE id = ?
+            `,
+            [
+                description,
+                progressId
+            ]
+        );
+
+        res.status(200).json({
+            message: "Deskripsi progress berhasil diperbarui"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+export const deleteProgressImage = async (req, res) => {
+
+    try {
+
+        const { imageId } = req.params;
+
+        const [progress] = await db.query(
+            `
+            SELECT *
+            FROM laporan_progress_images
+            WHERE id = ?
+            `,
+            [imageId]
+        );
+
+        if (progress.length === 0) {
+            return res.status(404).json({
+                message: "Foto tidak ditemukan"
+            });
+        }
+
+        await db.query(
+            `
+            DELETE FROM laporan_progress_images
+            WHERE id = ?
+            `,
+            [imageId]
+        );
+
+        res.status(200).json({
+            message: "Foto progress berhasil dihapus"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const getInternalComments = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const [laporan] = await db.query(
+            `
+            SELECT *
+            FROM laporan
+            WHERE id = ?
+            `,
+            [id]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+
+        const dataLaporan = laporan[0];
+
+        if (
+            req.user.role === "user" &&
+            dataLaporan.user_id !== req.user.id
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        if (
+            req.user.role === "admin" &&
+            dataLaporan.city !== req.user.city
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        const [comments] = await db.query(
+            `
+            SELECT
+                komentar_internal.id,
+                komentar_internal.komentar,
+                komentar_internal.created_at,
+                komentar_internal.updated_at,
+
+                users.id AS user_id,
+                users.userName,
+                users.role
+
+            FROM komentar_internal
+
+            JOIN users
+                ON komentar_internal.user_id = users.id
+
+            WHERE komentar_internal.laporan_id = ?
+
+            ORDER BY komentar_internal.created_at ASC
+            `,
+            [id]
+        );
+
+        res.status(200).json({
+            message: "Komentar berhasil diambil",
+            data: comments
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const deleteInternalComment = async (req, res) => {
+
+    try {
+
+        const { commentId } = req.params;
+
+        const [comment] = await db.query(
+            `
+            SELECT *
+            FROM komentar_internal
+            WHERE id = ?
+            `,
+            [commentId]
+        );
+
+        if (comment.length === 0) {
+            return res.status(404).json({
+                message: "Komentar tidak ditemukan"
+            });
+        }
+
+        const dataComment = comment[0];
+
+        if (
+            req.user.role !== "superadmin" &&
+            dataComment.user_id !== req.user.id
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        await db.query(
+            `
+            DELETE FROM komentar_internal
+            WHERE id = ?
+            `,
+            [commentId]
+        );
+
+        res.status(200).json({
+            message: "Komentar berhasil dihapus"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const createPublicComment = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const { komentar } = req.body;
+
+        if (!komentar) {
+            return res.status(400).json({
+                message: "Komentar wajib diisi"
+            });
+        }
+
+        const [laporan] = await db.query(
+            `
+            SELECT *
+            FROM laporan
+            WHERE id = ?
+            `,
+            [id]
+        );
+
+        if (laporan.length === 0) {
+            return res.status(404).json({
+                message: "Laporan tidak ditemukan"
+            });
+        }
+
+        if (
+            laporan[0].visibility !== "public" ||
+            laporan[0].status !== "selesai"
+        ) {
+            return res.status(400).json({
+                message: "Komentar hanya tersedia untuk laporan publik yang telah selesai"
+            });
+        }
+
+        const [result] = await db.query(
+            `
+            INSERT INTO komentar_laporan
+            (
+                laporan_id,
+                user_id,
+                komentar
+            )
+            VALUES (?, ?, ?)
+            `,
+            [
+                id,
+                req.user.id,
+                komentar
+            ]
+        );
+
+        if (laporan[0].user_id !== req.user.id) {
+
+            await db.query(
+                `
+                INSERT INTO notifications
+                (
+                    user_id,
+                    laporan_id,
+                    title,
+                    message
+                )
+                VALUES (?, ?, ?, ?)
+                `,
+                [
+                    laporan[0].user_id,
+                    id,
+                    "Komentar Baru",
+                    "Seseorang mengomentari laporan Anda"
+                ]
+            );
+
+        }
+
+        res.status(201).json({
+            message: "Komentar berhasil ditambahkan",
+            data: {
+                id: result.insertId
+            }
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const getPublicComments = async (req, res) => {
+
+    try {
+
+        const { id } = req.params;
+
+        const [comments] = await db.query(
+            `
+            SELECT
+                komentar_laporan.id,
+                komentar_laporan.komentar,
+                komentar_laporan.created_at,
+
+                users.id AS user_id,
+                users.userName
+
+            FROM komentar_laporan
+
+            JOIN users
+                ON komentar_laporan.user_id = users.id
+
+            WHERE laporan_id = ?
+            AND is_deleted = FALSE
+
+            ORDER BY komentar_laporan.created_at ASC
+            `,
+            [id]
+        );
+
+        res.status(200).json({
+            message: "Komentar berhasil diambil",
+            data: comments
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
+
+export const deletePublicComment = async (req, res) => {
+
+    try {
+
+        const { commentId } = req.params;
+
+        const [comment] = await db.query(
+            `
+            SELECT *
+            FROM komentar_laporan
+            WHERE id = ?
+            `,
+            [commentId]
+        );
+
+        if (comment.length === 0) {
+            return res.status(404).json({
+                message: "Komentar tidak ditemukan"
+            });
+        }
+
+        if (
+            comment[0].user_id !== req.user.id &&
+            req.user.role !== "admin" &&
+            req.user.role !== "superadmin"
+        ) {
+            return res.status(403).json({
+                message: "Akses ditolak"
+            });
+        }
+
+        await db.query(
+            `
+            UPDATE komentar_laporan
+            SET is_deleted = TRUE
+            WHERE id = ?
+            `,
+            [commentId]
+        );
+
+        res.status(200).json({
+            message: "Komentar berhasil dihapus"
         });
 
     } catch (error) {
