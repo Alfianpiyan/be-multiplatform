@@ -69,6 +69,11 @@ router.patch(
 );
 
 router.get(
+    "/public/kategori",
+    getAllKategori
+);
+
+router.get(
     "/kategori",
     authMiddleware,
     roleMiddleware("admin", "superadmin"),

@@ -1,54 +1,9 @@
 import db from "../config/db.js";
 
-export const createLaporan = async (req, res) => {
-    try {
+    export const createLaporan = async (req, res) => {
+        try {
 
-        const {
-            kategori_id,
-            title,
-            report_description,
-            city,
-            location_description,
-            latitude,
-            longitude,
-            waktu_kejadian,
-            visibility
-        } = req.body;
-
-        if (kategori_id) {
-
-        const [kategori] = await db.query(
-                `
-                SELECT *
-                FROM kategori
-                WHERE id = ?
-                `,
-                [kategori_id]
-            );
-
-            if (kategori.length === 0) {
-                return res.status(404).json({
-                    message: "Kategori tidak ditemukan"
-                });
-            }
-
-        }
-
-        if (
-            visibility &&
-            visibility !== "private" &&
-            visibility !== "public"
-        ) {
-            return res.status(400).json({
-                message: "Visibility tidak valid"
-            });
-        }
-
-        const [laporan] = await db.query(
-            `
-            INSERT INTO laporan
-            (
-                user_id,
+            const {
                 kategori_id,
                 title,
                 report_description,
@@ -58,62 +13,107 @@ export const createLaporan = async (req, res) => {
                 longitude,
                 waktu_kejadian,
                 visibility
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `,
-            [
-                req.user.id,
-                kategori_id || null,
-                title || null,
-                report_description || null,
-                city || null,
-                location_description || null,
-                latitude || null,
-                longitude || null,
-                waktu_kejadian || null,
-                visibility || "private"
-            ]
-        );
+            } = req.body;
 
-        if (req.files && req.files.length > 0) {
+            if (kategori_id) {
 
-            for (const file of req.files) {
-
-                await db.query(
+            const [kategori] = await db.query(
                     `
-                    INSERT INTO laporan_images
-                    (
-                        laporan_id,
-                        image_url
-                    )
-                    VALUES (?, ?)
+                    SELECT *
+                    FROM kategori
+                    WHERE id = ?
                     `,
-                    [
-                        laporan.insertId,
-                        file.path
-                    ]
+                    [kategori_id]
                 );
 
+                if (kategori.length === 0) {
+                    return res.status(404).json({
+                        message: "Kategori tidak ditemukan"
+                    });
+                }
+
             }
+
+            if (
+                visibility &&
+                visibility !== "private" &&
+                visibility !== "public"
+            ) {
+                return res.status(400).json({
+                    message: "Visibility tidak valid"
+                });
+            }
+
+            const [laporan] = await db.query(
+                `
+                INSERT INTO laporan
+                (
+                    user_id,
+                    kategori_id,
+                    title,
+                    report_description,
+                    city,
+                    location_description,
+                    latitude,
+                    longitude,
+                    waktu_kejadian,
+                    visibility
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `,
+                [
+                    req.user.id,
+                    kategori_id || null,
+                    title || null,
+                    report_description || null,
+                    city || null,
+                    location_description || null,
+                    latitude || null,
+                    longitude || null,
+                    waktu_kejadian || null,
+                    visibility || "private"
+                ]
+            );
+
+            if (req.files && req.files.length > 0) {
+
+                for (const file of req.files) {
+
+                    await db.query(
+                        `
+                        INSERT INTO laporan_images
+                        (
+                            laporan_id,
+                            image_url
+                        )
+                        VALUES (?, ?)
+                        `,
+                        [
+                            laporan.insertId,
+                            file.path
+                        ]
+                    );
+
+                }
+
+            }
+
+            res.status(201).json({
+                message: "Draft laporan berhasil dibuat",
+                data: {
+                    laporan_id: laporan.insertId,
+                    status: "draft"
+                }
+            });
+
+        } catch (error) {
+
+            res.status(500).json({
+                message: error.message
+            });
 
         }
-
-        res.status(201).json({
-            message: "Draft laporan berhasil dibuat",
-            data: {
-                laporan_id: laporan.insertId,
-                status: "draft"
-            }
-        });
-
-    } catch (error) {
-
-        res.status(500).json({
-            message: error.message
-        });
-
-    }
-};
+    };
 
 export const getMyDraftLaporan = async (req, res) => {
 
@@ -171,7 +171,6 @@ export const updateDraftLaporan = async (req, res) => {
         const { id } = req.params;
 
         const {
-            kategori_id,
             title,
             report_description,
             city,
@@ -212,30 +211,10 @@ export const updateDraftLaporan = async (req, res) => {
             });
         }
 
-        if (kategori_id) {
-
-        const [kategori] = await db.query(
-                `
-                SELECT *
-                FROM kategori
-                WHERE id = ?
-                `,
-                [kategori_id]
-            );
-
-            if (kategori.length === 0) {
-                return res.status(404).json({
-                    message: "Kategori tidak ditemukan"
-                });
-            }
-
-        }
-
         await db.query(
             `
             UPDATE laporan
             SET
-                kategori_id = ?,
                 title = ?,
                 report_description = ?,
                 city = ?,
@@ -248,7 +227,6 @@ export const updateDraftLaporan = async (req, res) => {
             WHERE id = ?
             `,
             [
-                kategori_id || null,
                 title || null,
                 report_description || null,
                 city || null,
@@ -310,7 +288,6 @@ export const submitLaporan = async (req, res) => {
         }
 
         if (
-            !laporan[0].kategori_id ||
             !laporan[0].title ||
             !laporan[0].report_description ||
             !laporan[0].city ||

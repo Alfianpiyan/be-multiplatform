@@ -140,6 +140,7 @@ export const updateStatusLaporan = async (req, res) => {
 
         const {
             status,
+            visibility,
             alasan_penolakan
         } = req.body;
 
@@ -154,6 +155,15 @@ export const updateStatusLaporan = async (req, res) => {
         if (!allowedStatus.includes(status)) {
             return res.status(400).json({
                 message: "Status tidak valid"
+            });
+        }
+
+        if (
+            visibility &&
+            !["public", "private"].includes(visibility)
+        ) {
+            return res.status(400).json({
+                message: "Visibility tidak valid"
             });
         }
 
@@ -178,7 +188,6 @@ export const updateStatusLaporan = async (req, res) => {
             });
         }
 
-
         const oldStatus = laporan[0].status;
 
         let rejected_at = null;
@@ -190,6 +199,20 @@ export const updateStatusLaporan = async (req, res) => {
 
         if (status === "diverifikasi") {
             verified_at = new Date();
+        }
+
+        let finalVisibility = laporan[0].visibility;
+
+        if (status === "selesai") {
+
+            if (!visibility) {
+                return res.status(400).json({
+                    message:
+                        "Visibility wajib dipilih saat laporan selesai"
+                });
+            }
+
+            finalVisibility = visibility;
         }
 
         await db.query(
@@ -206,11 +229,7 @@ export const updateStatusLaporan = async (req, res) => {
             `,
             [
                 status,
-
-                status === "selesai"
-                    ? "public"
-                    : "private",
-
+                finalVisibility,
                 alasan_penolakan || null,
                 rejected_at,
                 verified_at,
@@ -273,7 +292,6 @@ export const updateStatusLaporan = async (req, res) => {
     }
 
 };
-
 export const reviewLaporan = async (req, res) => {
 
     try {
