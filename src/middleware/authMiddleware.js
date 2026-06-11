@@ -1,34 +1,33 @@
 import jwt from "jsonwebtoken";
 
 export const authMiddleware = (req, res, next) => {
-
     try {
+        const authHeader = req.headers.authorization;
 
-        const token = req.headers.authorization;
-
-        if (!token) {
+        // Cek format header "Bearer <token>"
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
             return res.status(401).json({
-                message: "Token required"
+                message: "Akses ditolak: Token tidak ditemukan atau format salah"
             });
         }
 
-        const splitToken = token.split(" ")[1];
+        const token = authHeader.split(" ")[1];
 
+        // Verifikasi token
         const decoded = jwt.verify(
-            splitToken,
+            token,
             process.env.JWT_SECRET
         );
 
+        // Simpan data user ke request biar bisa dipake di controller
         req.user = decoded;
 
         next();
-
     } catch (error) {
-
-        res.status(401).json({
-            message: "Invalid token"
+        // Token kadaluwarsa atau palsu
+        return res.status(401).json({
+            error: "UNAUTHORIZED",
+            message: "Sesi anda telah berakhir atau token tidak valid"
         });
-
     }
-
 };

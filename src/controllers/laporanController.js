@@ -611,11 +611,8 @@ export const getDetailLaporan = async (req, res) => {
                 message: "Laporan tidak ditemukan"
             });
         }
-
-        if (
-            laporan[0].visibility !== "public" ||
-            laporan[0].status !== "selesai"
-        ) {
+// Izinkan akses jika public (tidak peduli status apa pun)
+        if (laporan[0].visibility !== "public") {
             return res.status(403).json({
                 message: "Laporan tidak dapat diakses"
             });
@@ -838,14 +835,12 @@ export const getDetailLaporanPrivate = async (req, res) => {
         }
 
         const dataLaporan = laporan[0];
-
-        if (
-            req.user.role === "user" &&
-            dataLaporan.user_id !== req.user.id
-        ) {
-            return res.status(403).json({
-                message: "Akses ditolak"
-            });
+        if (req.user.role === "admin") {
+            // Jika dia bukan superadmin, baru cek kotanya
+            // Pastikan di middleware auth-mu, role 'superadmin' terbaca sebagai string itu
+            if (req.user.role !== "superadmin" && dataLaporan.city !== req.user.city) {
+                return res.status(403).json({ message: "Akses ditolak: Beda wilayah" });
+            }
         }
 
         if (

@@ -69,6 +69,13 @@ router.patch(
     submitLaporan
 );
 
+router.post(
+    "/upload-images/:id",
+    authMiddleware,
+    upload.array("images", 5), // Pastikan menggunakan middleware Multer pembaca array 'images'
+    uploadLaporanImages
+);
+
 router.get(
     "/me",
     authMiddleware,

@@ -19,6 +19,9 @@ async function startServer() {
             console.log(`Server running on port ${PORT}`);
         });
 
+        server.timeout = 300000;         // Set timeout jadi 5 menit (dalam milidetik)
+server.headersTimeout = 305000;
+
     } catch (error) {
         console.log(error);
     }

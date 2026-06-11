@@ -81,13 +81,10 @@ export const createAdmin = async (req, res) => {
     }
 
 };
-
 export const getAllLaporan = async (req, res) => {
-
     try {
-
-        const [laporan] = await db.query(
-            `
+        // 1. Query dasar
+        let sql = `
             SELECT
                 laporan.id,
                 laporan.title,
@@ -96,40 +93,37 @@ export const getAllLaporan = async (req, res) => {
                 laporan.status,
                 laporan.visibility,
                 laporan.created_at,
-
                 users.userName,
-
                 kategori.kategori
-
             FROM laporan
+            JOIN users ON laporan.user_id = users.id
+            LEFT JOIN kategori ON laporan.kategori_id = kategori.id
+            WHERE laporan.status != 'draft'
+        `;
+        
+        const params = [];
 
-            JOIN users
-                ON laporan.user_id = users.id
+        // 2. Logic Fleksibel: 
+        // Jika rolenya BUKAN superadmin, baru kita tambahkan filter berdasarkan kota
+        if (req.user.role !== 'superadmin') {
+            sql += ` AND laporan.city = ?`;
+            params.push(req.user.city);
+        }
 
-            LEFT JOIN kategori
-                ON laporan.kategori_id = kategori.id
+        sql += ` ORDER BY laporan.created_at DESC`;
 
-            WHERE laporan.city = ?
-            AND laporan.status != 'draft'
-
-            ORDER BY laporan.created_at DESC
-            `,
-            [req.user.city]
-        );
+        // 3. Eksekusi query
+        const [laporan] = await db.query(sql, params);
 
         res.status(200).json({
-            message: "Semua laporan berhasil diambil",
+            message: "Laporan berhasil diambil",
             data: laporan
         });
-
     } catch (error) {
-
         res.status(500).json({
             message: error.message
         });
-
     }
-
 };
 
 export const updateStatusLaporan = async (req, res) => {
