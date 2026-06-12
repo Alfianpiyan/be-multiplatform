@@ -84,31 +84,29 @@ export const createAdmin = async (req, res) => {
 export const getAllLaporan = async (req, res) => {
     try {
         // 1. Query dasar
-        let sql = `
-            SELECT
-                laporan.id,
-                laporan.title,
-                laporan.report_description,
-                laporan.city,
-                laporan.status,
-                laporan.visibility,
-                laporan.created_at,
-                users.userName,
-                kategori.kategori
-            FROM laporan
-            JOIN users ON laporan.user_id = users.id
-            LEFT JOIN kategori ON laporan.kategori_id = kategori.id
-            WHERE laporan.status != 'draft'
-        `;
+       let sql = `
+    SELECT
+        laporan.id,
+        laporan.title,
+        laporan.status,
+        users.userName
+    FROM laporan
+    LEFT JOIN users ON laporan.user_id = users.id
+    LEFT JOIN kategori ON laporan.kategori_id = kategori.id
+`;
+// HAPUS SEMUA WHERE/FILTER UNTUK SEMENTARA
+
         
         const params = [];
 
         // 2. Logic Fleksibel: 
         // Jika rolenya BUKAN superadmin, baru kita tambahkan filter berdasarkan kota
+       // Perbaikan query di adminController agar lebih toleran terhadap string teks
         if (req.user.role !== 'superadmin') {
-            sql += ` AND laporan.city = ?`;
+            sql += ` AND LOWER(TRIM(laporan.city)) = LOWER(TRIM(?))`;
             params.push(req.user.city);
         }
+        
 
         sql += ` ORDER BY laporan.created_at DESC`;
 
@@ -119,7 +117,10 @@ export const getAllLaporan = async (req, res) => {
             message: "Laporan berhasil diambil",
             data: laporan
         });
-    } catch (error) {
+        
+    } 
+    
+    catch (error) {
         res.status(500).json({
             message: error.message
         });
@@ -696,10 +697,9 @@ export const rejectLaporan = async (req, res) => {
 };
 
 export const createKategori = async (req, res) => {
-
     try {
-
-        const { kategori } = req.body;
+        // 🌟 1. Ambil 'kategori' DAN 'description' dari req.body
+        const { kategori, description } = req.body;
 
         if (!kategori) {
             return res.status(400).json({
@@ -722,33 +722,34 @@ export const createKategori = async (req, res) => {
             });
         }
 
+        // 🌟 2. Update query INSERT agar memasukkan kolom description
         const [result] = await db.query(
             `
             INSERT INTO kategori
             (
-                kategori
+                kategori,
+                description
             )
-            VALUES (?)
+            VALUES (?, ?)
             `,
-            [kategori]
+            [kategori, description || null] // Berikan null jika deskripsi tidak diisi dari frontend
         );
 
+        // 🌟 3. Kembalikan data lengkap dalam response JSON
         res.status(201).json({
             message: "Kategori berhasil dibuat",
             data: {
                 id: result.insertId,
-                kategori
+                kategori,
+                description
             }
         });
 
     } catch (error) {
-
         res.status(500).json({
             message: error.message
         });
-
     }
-
 };
 
 export const getAllKategori = async (req, res) => {
@@ -761,7 +762,8 @@ export const getAllKategori = async (req, res) => {
             FROM kategori
             ORDER BY kategori ASC
             `
-        );
+        );// Perbaikan query di adminController agar lebih toleran terhadap string teks
+
 
         res.status(200).json({
             message: "Kategori berhasil diambil",
@@ -778,52 +780,31 @@ export const getAllKategori = async (req, res) => {
 
 };
 
+// adminController.js
 export const updateKategori = async (req, res) => {
-
     try {
-
         const { id } = req.params;
-        const { kategori } = req.body;
+        const { kategori, description } = req.body; // 🌟 Ambil keduanya dari req.body
 
-        const [existingKategori] = await db.query(
-            `
-            SELECT *
-            FROM kategori
-            WHERE id = ?
-            `,
-            [id]
-        );
-
-        if (existingKategori.length === 0) {
-            return res.status(404).json({
-                message: "Kategori tidak ditemukan"
-            });
+        if (!kategori) {
+            return res.status(400).json({ message: "Nama kategori wajib diisi" });
         }
 
+        // Jalankan query UPDATE untuk kedua kolom
         await db.query(
-            `
-            UPDATE kategori
-            SET kategori = ?
-            WHERE id = ?
-            `,
-            [
-                kategori,
-                id
-            ]
+            `UPDATE kategori SET kategori = ?, description = ? WHERE id = ?`,
+            [kategori, description || null, id]
         );
 
+        
+
         res.status(200).json({
-            message: "Kategori berhasil diperbarui"
+            message: "Kategori berhasil diperbarui",
+            data: { id, kategori, description }
         });
-
     } catch (error) {
-
-        res.status(500).json({
-            message: error.message
-        });
-
+        res.status(500).json({ message: error.message });
     }
-
 };
 
 export const deleteKategori = async (req, res) => {

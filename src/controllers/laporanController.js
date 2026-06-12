@@ -255,129 +255,106 @@ export const updateDraftLaporan = async (req, res) => {
 
 
 export const submitLaporan = async (req, res) => {
-
     try {
-
         const { id } = req.params;
+        const { 
+            title, 
+            report_description, 
+            city, 
+            location_description, 
+            kategori_id, 
+            latitude, 
+            longitude, 
+            waktu_kejadian, 
+            visibility 
+        } = req.body;
 
-        const [laporan] = await db.query(
-            `
-            SELECT *
-            FROM laporan
-            WHERE id = ?
-            `,
-            [id]
-        );
+        // 1. Cek apakah draft laporan benar-benar ada di database
+        const [laporanCheck] = await db.query(`SELECT * FROM laporan WHERE id = ?`, [id]);
+        if (laporanCheck.length === 0) {
+            return res.status(404).json({ message: "Laporan tidak ditemukan" });
+        }
 
-        if (laporan.length === 0) {
-            return res.status(404).json({
-                message: "Laporan tidak ditemukan"
+        // 2. Pastikan yang mengakses adalah warga pemilik laporan tersebut
+        if (laporanCheck[0].user_id !== req.user.id) {
+            return res.status(403).json({ message: "Akses ditolak" });
+        }
+
+        // 3. Gabungkan data baru dari frontend dengan data lama di DB (jika ada yang tidak terisi)
+        const finalTitle = title || laporanCheck[0].title;
+        const finalDesc = report_description || laporanCheck[0].report_description;
+        const finalCity = city || laporanCheck[0].city;
+        const finalLoc = location_description || laporanCheck[0].location_description;
+
+        // 4. Validasi akhir sebelum status laporan berubah menjadi 'pending'
+        if (!finalTitle || !finalDesc || !finalCity || !finalLoc) {
+            return res.status(400).json({ 
+                message: "Gagal mengirim! Kolom judul, deskripsi, kota, dan lokasi detail wajib diisi." 
             });
         }
 
-        if (laporan[0].user_id !== req.user.id) {
-            return res.status(403).json({
-                message: "Akses ditolak"
-            });
-        }
-
-        if (laporan[0].status !== "draft") {
-            return res.status(400).json({
-                message: "Laporan sudah dikirim"
-            });
-        }
-
-        if (
-            !laporan[0].title ||
-            !laporan[0].report_description ||
-            !laporan[0].city ||
-            !laporan[0].location_description
-        ) {
-            return res.status(400).json({
-                message: "Data laporan belum lengkap"
-            });
-        }
-
+        // 5. Update data laporan dan naikkan statusnya dari 'draft' menjadi 'pending'
         await db.query(
-            `
-            UPDATE laporan
-            SET
-                status = 'pending',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            `,
-            [id]
-        );
-
-        await db.query(
-            `
-            INSERT INTO status_laporan
-            (
-                laporan_id,
-                old_status,
-                new_status,
-                changed_by,
-                changer_role,
-                notes
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-            `,
+            `UPDATE laporan SET 
+                title = ?, 
+                report_description = ?, 
+                city = ?, 
+                location_description = ?, 
+                kategori_id = ?, 
+                latitude = ?, 
+                longitude = ?, 
+                waktu_kejadian = ?, 
+                visibility = ?, 
+                status = 'pending', 
+                updated_at = CURRENT_TIMESTAMP 
+             WHERE id = ?`,
             [
-                id,
-                "draft",
-                "pending",
-                req.user.id,
-                "user",
-                "Laporan berhasil dikirim"
+                finalTitle, 
+                finalDesc, 
+                finalCity, 
+                finalLoc,
+                kategori_id || laporanCheck[0].kategori_id,
+                latitude || laporanCheck[0].latitude,
+                longitude || laporanCheck[0].longitude,
+                waktu_kejadian || laporanCheck[0].waktu_kejadian,
+                visibility || laporanCheck[0].visibility || 'private',
+                id
             ]
         );
 
-        
-        const [admins] = await db.query(
-            `
-            SELECT id
-            FROM users
-            WHERE role = 'admin'
-            AND city = ?
-            `,
-            [laporan[0].city]
+        // 6. Catat log perubahan status ke tabel riwayat (status_laporan)
+        await db.query(
+            `INSERT INTO status_laporan (laporan_id, old_status, new_status, changed_by, changer_role, notes) 
+             VALUES (?, 'draft', 'pending', ?, 'user', 'Laporan berhasil dikirim oleh warga')`,
+            [id, req.user.id]
         );
 
-        for (const admin of admins) {
+        // 7. SINKRONISASI NOTIFIKASI: Ambil ID Admin kota tujuan & semua Superadmin
+        const [targetAdmins] = await db.query(
+            `SELECT id FROM users WHERE (role = 'admin' AND LOWER(TRIM(city)) = LOWER(TRIM(?))) OR role = 'superadmin'`,
+            [finalCity]
+        );
 
+        // 8. Masukkan baris notifikasi ke database secara looping
+        for (const admin of targetAdmins) {
             await db.query(
-                `
-                INSERT INTO notifications
-                (
-                    user_id,
-                    laporan_id,
-                    title,
-                    message
-                )
-                VALUES (?, ?, ?, ?)
-                `,
+                `INSERT INTO notifications (user_id, laporan_id, title, message) VALUES (?, ?, ?, ?)`,
                 [
-                    admin.id,
-                    id,
-                    "Laporan Baru",
-                    `Ada laporan baru dengan judul "${laporan[0].title}"`
+                    admin.id, 
+                    id, 
+                    "Aduan Masuk Baru", 
+                    `Ada laporan baru untuk kota ${finalCity} dengan judul: "${finalTitle}"`
                 ]
             );
-
         }
 
-        res.status(200).json({
-            message: "Laporan berhasil dikirim"
+        return res.status(200).json({ 
+            message: "Laporan aduan berhasil dikirim ke petugas wilayah!" 
         });
 
     } catch (error) {
-
-        res.status(500).json({
-            message: error.message
-        });
-
+        return res.status(500).json({ message: error.message });
     }
-
 };
 
 export const getMyLaporan = async (req, res) => {
@@ -476,97 +453,99 @@ export const getPublicLaporan = async (req, res) => {
 };
 
 export const uploadLaporanImages = async (req, res) => {
-
     try {
-
         const { id } = req.params;
 
-        const [laporan] = await db.query(
-            `
-            SELECT *
-            FROM laporan
-            WHERE id = ?
-            `,
+        // 1. Ambil data laporan
+        const [rows] = await db.query(
+            `SELECT * FROM laporan WHERE id = ?`,
             [id]
         );
 
-        if (laporan.length === 0) {
+        // Pastikan rows ada dan memiliki data
+        if (!rows || rows.length === 0) {
             return res.status(404).json({
                 message: "Laporan tidak ditemukan"
             });
         }
 
-        if (laporan[0].user_id !== req.user.id) {
+        const laporan = rows[0];
+
+        // 2. Validasi kepemilikan laporan
+        if (laporan.user_id !== req.user.id) {
             return res.status(403).json({
                 message: "Akses ditolak"
             });
         }
 
-        if (
-            laporan[0].status !== "draft" &&
-            laporan[0].status !== "pending"
-        ) {
+        // 3. Validasi status laporan
+        if (laporan.status !== "draft" && laporan.status !== "pending") {
             return res.status(400).json({
                 message: "Laporan tidak bisa ditambah gambar"
             });
         }
 
+        // 4. Validasi file kiriman dari Multer
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({
                 message: "File gambar wajib diupload"
             });
         }
 
-        const [images] = await db.query(
-            `
-            SELECT COUNT(*) AS total
-            FROM laporan_images
-            WHERE laporan_id = ?
-            `,
-            [id]
-        );
-
-        if (
-            images[0].total + req.files.length > 5
-        ) {
+        if (req.files.length > 5) {
             return res.status(400).json({
-                message: "Maksimal 5 gambar"
+                message: "Maksimal memuat 5 gambar"
             });
         }
 
+        // 🔥 SOLUSI UTAMA: Jika statusnya masih draf, hapus record gambar lama di DB 
+        // supaya tidak terjadi penumpukan (akumulasi) saat user klik kirim ulang.
+        if (laporan.status === "draft") {
+            await db.query(
+                `DELETE FROM laporan_images WHERE laporan_id = ?`,
+                [id]
+            );
+        } else {
+            // Jika statusnya 'pending' (bukan draf), gunakan hitungan akumulasi biasa
+            const [imageCountRows] = await db.query(
+                `SELECT COUNT(*) AS total FROM laporan_images WHERE laporan_id = ?`,
+                [id]
+            );
+            const totalGambarSaatIni = imageCountRows[0].total;
+
+            if (totalGambarSaatIni + req.files.length > 5) {
+                return res.status(400).json({
+                    message: `Maksimal 5 gambar. Saat ini sudah ada ${totalGambarSaatIni} gambar terlampir.`
+                });
+            }
+        }
+
+        // 5. Masukkan data gambar baru ke database
         for (const file of req.files) {
+            // Ambil path file (gunakan file.filename atau file.path tergantung konfigurasi disk/cloudinary kamu)
+            const imagePath = file.path || file.filename; 
 
             await db.query(
                 `
-                INSERT INTO laporan_images
-                (
-                    laporan_id,
-                    image_url
-                )
+                INSERT INTO laporan_images 
+                (laporan_id, image_url) 
                 VALUES (?, ?)
                 `,
-                [
-                    id,
-                    file.path
-                ]
+                [id, imagePath]
             );
-
         }
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "Gambar laporan berhasil diupload"
         });
 
     } catch (error) {
-
-        res.status(500).json({
-            message: error.message
+        console.error("Error pada uploadLaporanImages:", error);
+        return res.status(500).json({
+            message: error.message || "Terjadi kesalahan pada server"
         });
-
     }
-
 };
-
 export const getDetailLaporan = async (req, res) => {
 
     try {

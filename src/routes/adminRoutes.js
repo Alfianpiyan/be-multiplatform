@@ -73,12 +73,6 @@ router.get(
     getAllKategori
 );
 
-router.get(
-    "/kategori",
-    authMiddleware,
-    roleMiddleware("admin", "superadmin"),
-    getAllKategori
-);
 
 router.post(
     "/kategori",
@@ -97,7 +91,7 @@ router.patch(
 router.delete(
     "/kategori/:id",
     authMiddleware,
-    roleMiddleware("superadmin"),
+    roleMiddleware("admin","superadmin"),
     deleteKategori
 );
 
