@@ -83,46 +83,56 @@ export const createAdmin = async (req, res) => {
 };
 export const getAllLaporan = async (req, res) => {
     try {
-        // 1. Query dasar
-       let sql = `
-    SELECT
-        laporan.id,
-        laporan.title,
-        laporan.status,
-        users.userName
-    FROM laporan
-    LEFT JOIN users ON laporan.user_id = users.id
-    LEFT JOIN kategori ON laporan.kategori_id = kategori.id
-`;
-// HAPUS SEMUA WHERE/FILTER UNTUK SEMENTARA
-
+        // Query Dasar menggunakan LEFT JOIN agar data NULL di kategori_id tetap lolos seleksi
+        let sql = `
+            SELECT
+                laporan.id,
+                laporan.title,
+                laporan.report_description,
+                laporan.city,
+                laporan.city_id,
+                laporan.status,
+                laporan.visibility,
+                laporan.created_at,
+                users.userName,
+                kategori.kategori
+            FROM laporan
+            LEFT JOIN users ON laporan.user_id = users.id
+            LEFT JOIN kategori ON laporan.kategori_id = kategori.id
+            WHERE 1=1
+        `;
         
         const params = [];
 
-        // 2. Logic Fleksibel: 
-        // Jika rolenya BUKAN superadmin, baru kita tambahkan filter berdasarkan kota
-       // Perbaikan query di adminController agar lebih toleran terhadap string teks
-        if (req.user.role !== 'superadmin') {
-            sql += ` AND LOWER(TRIM(laporan.city)) = LOWER(TRIM(?))`;
-            params.push(req.user.city);
-        }
-        
+        // 1. Saring status agar tidak menampilkan yang berbentuk draft secara aman
+        sql += ` AND LOWER(TRIM(laporan.status)) != 'draft'`;
 
+        // 2. Filter Kota Admin (Jika bukan superadmin)
+        if (req.user && req.user.role !== 'superadmin') {
+            if (req.user.city) {
+                // LOWER dan TRIM disematkan untuk mengantisipasi adanya spasi tidak sengaja di database
+                sql += ` AND LOWER(TRIM(laporan.city)) = LOWER(TRIM(?))`;
+                params.push(req.user.city);
+            }
+        }
+
+        // 3. Urutkan berdasarkan laporan terbaru
         sql += ` ORDER BY laporan.created_at DESC`;
 
-        // 3. Eksekusi query
+        // Eksekusi Query ke Database
         const [laporan] = await db.query(sql, params);
-
-        res.status(200).json({
-            message: "Laporan berhasil diambil",
+        
+        // Response sukses dengan data yang berhasil ditarik
+        return res.status(200).json({
+            message: "Laporan publik berhasil diambil",
             data: laporan
         });
         
-    } 
-    
-    catch (error) {
-        res.status(500).json({
-            message: error.message
+    } catch (error) {
+        console.error("Terjadi error pada getAllLaporan:", error);
+        return res.status(500).json({
+            message: "Terjadi kesalahan pada server backend: " + error.message,
+            data: []
         });
     }
 };

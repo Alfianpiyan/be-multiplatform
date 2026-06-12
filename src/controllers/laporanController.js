@@ -403,55 +403,73 @@ export const getMyLaporan = async (req, res) => {
 };
 
 export const getPublicLaporan = async (req, res) => {
-
     try {
+        // Ambil data user dari authMiddleware (jika ada token JWT yang lolos)
+        const userRole = req.user?.role;
 
-       const [laporan] = await db.query(
-            `
-            SELECT
-                laporan.id,
-                laporan.title,
-                laporan.report_description,
-                laporan.city,
-                laporan.location_description,
-                laporan.status,
-                laporan.visibility,
-                laporan.created_at,
+        let querySQL = "";
+        let queryParams = [];
 
-                users.userName,
+        // 👑 KONDISI 1: JIKA YANG MENGAKSES ADALAH ADMIN / SUPERADMIN
+        if (userRole === "admin" || userRole === "superadmin") {
+            querySQL = `
+                SELECT
+                    laporan.id,
+                    laporan.title,
+                    laporan.report_description,
+                    laporan.city,
+                    laporan.location_description,
+                    laporan.status,
+                    laporan.visibility,
+                    laporan.created_at,
+                    users.userName,
+                    kategori.kategori
+                FROM laporan
+                JOIN users
+                    ON laporan.user_id = users.id
+                LEFT JOIN kategori
+                    ON laporan.kategori_id = kategori.id
+                ORDER BY laporan.created_at DESC
+            `;
+        } 
+        // 👤 KONDISI 2: JIKA USER BIASA ATAU PUBLIK TANPA LOGIN
+        else {
+            querySQL = `
+                SELECT
+                    laporan.id,
+                    laporan.title,
+                    laporan.report_description,
+                    laporan.city,
+                    laporan.location_description,
+                    laporan.status,
+                    laporan.visibility,
+                    laporan.created_at,
+                    users.userName,
+                    kategori.kategori
+                FROM laporan
+                JOIN users
+                    ON laporan.user_id = users.id
+                LEFT JOIN kategori
+                    ON laporan.kategori_id = kategori.id
+                WHERE laporan.visibility = 'public'
+                AND laporan.status = 'selesai'
+                ORDER BY laporan.created_at DESC
+            `;
+        }
 
-                kategori.kategori
-
-            FROM laporan
-
-            JOIN users
-                ON laporan.user_id = users.id
-
-            LEFT JOIN kategori
-                ON laporan.kategori_id = kategori.id
-
-            WHERE laporan.visibility = 'public'
-            AND laporan.status = 'selesai'
-
-            ORDER BY laporan.created_at DESC
-            `
-        );
+        const [laporan] = await db.query(querySQL, queryParams);
 
         res.status(200).json({
-            message: "Laporan publik berhasil diambil",
+            message: userRole ? "Seluruh data laporan internal berhasil diambil" : "Laporan publik berhasil diambil",
             data: laporan
         });
 
     } catch (error) {
-
         res.status(500).json({
             message: error.message
         });
-
     }
-
 };
-
 export const uploadLaporanImages = async (req, res) => {
     try {
         const { id } = req.params;
