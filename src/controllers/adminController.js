@@ -148,7 +148,11 @@ export const updateStatusLaporan = async (req, res) => {
             visibility,
             alasan_penolakan
         } = req.body;
-
+       if (req.user.role === "user" || req.user.role === "masyarakat") { 
+            return res.status(403).json({
+                message: "Akses ditolak: Anda tidak memiliki otoritas untuk mengubah status laporan ini."
+            });
+        }
         const allowedStatus = [
             "diperiksa",
             "diverifikasi",

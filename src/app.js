@@ -7,6 +7,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 
 import { authMiddleware } from "./middleware/authMiddleware.js";
 import { roleMiddleware } from "./middleware/roleMiddleware.js";
+import { hanyaPetugas } from "./middleware/roleMiddleware.js";
 
 import notificationRoutes from "./routes/notificationRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
@@ -32,7 +33,7 @@ app.use(cors({
         }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH","OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"]
 }));
 // ================================================================
@@ -45,8 +46,9 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/laporan", adminRoutes);
 app.use("/api/laporan", laporanRoutes);
+app.use("/api/laporan", adminRoutes);
+
 
 app.use("/api/notifications", notificationRoutes);
 
@@ -60,6 +62,10 @@ app.get(
         });
     }
 );
+
+app.get("/api/admin-check", authMiddleware, hanyaPetugas, (req, res) => {
+    res.json({ message: "Selamat Datang di Halaman Internal" });
+});
 
 app.get(
     "/api",

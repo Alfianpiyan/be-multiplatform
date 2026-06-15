@@ -15,3 +15,6 @@ export const roleMiddleware = (...allowedRoles) => {
         next();
     };
 };
+
+export const hanyaPetugas = roleMiddleware("admin", "superadmin");
+export const hanyaMasyarakat = roleMiddleware("user");

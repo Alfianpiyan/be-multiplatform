@@ -565,9 +565,7 @@ export const uploadLaporanImages = async (req, res) => {
     }
 };
 export const getDetailLaporan = async (req, res) => {
-
     try {
-
         const { id } = req.params;
 
         const [laporan] = await db.query(
@@ -583,21 +581,14 @@ export const getDetailLaporan = async (req, res) => {
                 laporan.waktu_kejadian,
                 laporan.status,
                 laporan.visibility,
+                laporan.user_id, -- Diperlukan untuk validasi hak milik user
                 laporan.created_at,
                 laporan.updated_at,
-
                 users.userName,
-
                 kategori.kategori
-
             FROM laporan
-
-            JOIN users
-                ON laporan.user_id = users.id
-
-            LEFT JOIN kategori
-                ON laporan.kategori_id = kategori.id
-
+            JOIN users ON laporan.user_id = users.id
+            LEFT JOIN kategori ON laporan.kategori_id = kategori.id
             WHERE laporan.id = ?
             `,
             [id]
@@ -608,60 +599,66 @@ export const getDetailLaporan = async (req, res) => {
                 message: "Laporan tidak ditemukan"
             });
         }
-// Izinkan akses jika public (tidak peduli status apa pun)
-        if (laporan[0].visibility !== "public") {
-            return res.status(403).json({
-                message: "Laporan tidak dapat diakses"
-            });
+
+        const dataLaporan = laporan[0]; 
+
+        // 1. Validasi Hak Akses Khusus Admin Wilayah
+        if (req.user.role === "admin") {
+            const laporanCity = dataLaporan.city ? dataLaporan.city.toLowerCase().trim() : "";
+            const adminCity = req.user.city ? req.user.city.toLowerCase().trim() : "";
+
+            if (laporanCity !== adminCity) {
+                return res.status(403).json({
+                    message: "Akses ditolak: Wilayah laporan tidak sesuai dengan area tugas Anda."
+                });
+            }
+        } 
+        // 2. Validasi Hak Akses jika Pengguna Biasa (Bukan Admin)
+        else {
+            // Jika laporan private DAN bukan milik user yang sedang login, maka blokir
+            if (dataLaporan.visibility !== "public" && dataLaporan.user_id !== req.user.id) {
+                return res.status(403).json({
+                    message: "Laporan tidak dapat diakses atau bersifat privat."
+                });
+            }
         }
 
+        // 3. Ambil Lampiran Gambar Utama (Hanya dieksekusi jika lolos pengecekan di atas)
         const [images] = await db.query(
             `
-            SELECT
-                id,
-                image_url
+            SELECT id, image_url
             FROM laporan_images
             WHERE laporan_id = ?
             `,
             [id]
         );
 
+        // 4. Ambil Lampiran Gambar Perkembangan Lapangan
         const [progressImages] = await db.query(
             `
-            SELECT
-                id,
-                image_url,
-                description,
-                created_at
-
+            SELECT id, image_url, description, created_at
             FROM laporan_progress_images
-
             WHERE laporan_id = ?
-
             ORDER BY created_at ASC
             `,
             [id]
         );
 
-        res.status(200).json({
+        // 5. Kirim Respons Utuh ke Frontend (Satu pintu pengiriman data)
+        return res.status(200).json({
             message: "Detail laporan berhasil diambil",
             data: {
-                ...laporan[0],
-
+                ...dataLaporan,
                 before_images: images,
-
                 progress_images: progressImages
             }
         });
 
     } catch (error) {
-
-        res.status(500).json({
+        return res.status(500).json({
             message: error.message
         });
-
     }
-
 };
 export const getLaporanTimeline = async (req, res) => {
 
@@ -832,22 +829,23 @@ export const getDetailLaporanPrivate = async (req, res) => {
         }
 
         const dataLaporan = laporan[0];
-        if (req.user.role === "admin") {
-            // Jika dia bukan superadmin, baru cek kotanya
-            // Pastikan di middleware auth-mu, role 'superadmin' terbaca sebagai string itu
-            if (req.user.role !== "superadmin" && dataLaporan.city !== req.user.city) {
-                return res.status(403).json({ message: "Akses ditolak: Beda wilayah" });
-            }
-        }
 
-        if (
-            req.user.role === "admin" &&
-            dataLaporan.city !== req.user.city
-        ) {
+        // Proteksi wilayah kerja admin
+        const laporanCity = dataLaporan.city ? dataLaporan.city.toLowerCase().trim() : "";
+        const adminCity = req.user.city ? req.user.city.toLowerCase().trim() : "";
+
+        if (laporanCity !== adminCity) {
             return res.status(403).json({
-                message: "Akses ditolak"
+                message: "Akses ditolak: Wilayah aduan di luar area tugas Anda."
             });
         }
+
+        // Kirim data lengkap ke admin
+        return res.status(200).json({
+            message: "Detail laporan internal berhasil diambil",
+            data: { ...dataLaporan, before_images: images, progress_images: progressImages }
+        });
+        
 
         const [images] = await db.query(
             `
@@ -1059,31 +1057,23 @@ export const createInternalComment = async (req, res) => {
             });
         }
 
-        if (
-            req.user.role === "admin" &&
-            dataLaporan.city !== req.user.city
-        ) {
-            return res.status(403).json({
-                message: "Akses ditolak"
-            });
+        if (req.user.role === "admin") {
+            const laporanCity = dataLaporan.city ? dataLaporan.city.toLowerCase().trim() : "";
+            const adminCity = req.user.city ? req.user.city.toLowerCase().trim() : "";
+
+            if (laporanCity !== adminCity) {
+                return res.status(403).json({
+                    message: "Akses ditolak: Wilayah laporan tidak sesuai dengan area tugas Anda."
+                });
+            }
         }
 
         const allowedStatus = [
+            "pending",         // 👈 Tambahkan ini agar saat laporan baru masuk sudah bisa dichat
             "diperiksa",
             "diverifikasi",
             "tindak_lanjut"
         ];
-
-        if (
-            !allowedStatus.includes(
-                dataLaporan.status
-            )
-        ) {
-            return res.status(400).json({
-                message:
-                    "Diskusi hanya tersedia saat laporan sedang diproses"
-            });
-        }
 
         await db.query(
             `
@@ -1430,14 +1420,16 @@ export const getInternalComments = async (req, res) => {
                 message: "Akses ditolak"
             });
         }
+        if (req.user.role === "admin") {
+            // Gunakan toLowerCase() agar "Bandung" dan "bandung" dianggap sama
+            const laporanCity = dataLaporan.city ? dataLaporan.city.toLowerCase().trim() : "";
+            const adminCity = req.user.city ? req.user.city.toLowerCase().trim() : "";
 
-        if (
-            req.user.role === "admin" &&
-            dataLaporan.city !== req.user.city
-        ) {
-            return res.status(403).json({
-                message: "Akses ditolak"
-            });
+            if (laporanCity !== adminCity) {
+                return res.status(403).json({
+                    message: "Akses ditolak: Wilayah laporan tidak sesuai dengan area tugas Anda."
+                });
+            }
         }
 
         const [comments] = await db.query(

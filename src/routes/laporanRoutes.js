@@ -31,6 +31,8 @@ import {
     // updateStatusLaporan 
 } from "../controllers/laporanController.js";
 
+import { hanyaPetugas } from "../middleware/roleMiddleware.js";
+
 const router = express.Router();
 
 // ========================================================
@@ -113,7 +115,7 @@ router.get(
 router.post(
     "/:id/internal-comment",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"), // Di-lock agar user biasa tidak bisa kirim
+    roleMiddleware("user","admin", "superadmin"), // Di-lock agar user biasa tidak bisa kirim
     createInternalComment
 );
 
@@ -121,7 +123,7 @@ router.post(
 router.get(
     "/:id/internal-comment",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"), // Di-lock agar user biasa tidak bisa intip
+    roleMiddleware("user","admin", "superadmin"), // Di-lock agar user biasa tidak bisa intip
     getInternalComments
 );
 
@@ -129,34 +131,14 @@ router.get(
 router.delete(
     "/internal-comment/:commentId",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"),
+    roleMiddleware("user","admin", "superadmin"),
     deleteInternalComment
 );
 
 // POST: /api/laporan/:id/progress
-router.post(
-    "/:id/progress",
-    authMiddleware,
-    roleMiddleware("admin", "superadmin"), // Hanya petugas yang bisa upload bukti progres lapangan
-    upload.array("images", 5),
-    uploadProgressImages
-);
-
-// PATCH: /api/laporan/:id/progress (Mengubah deskripsi perkembangan)
-router.patch(
-    "/:id/progress",
-    authMiddleware,
-    roleMiddleware("admin", "superadmin"),
-    updateProgressDescription
-);
-
-// DELETE: /api/laporan/progress-image/:imageId
-router.delete(
-    "/progress-image/:imageId",
-    authMiddleware,
-    roleMiddleware("admin", "superadmin"),
-    deleteProgressImage
-);
+router.post("/:id/progress", authMiddleware, hanyaPetugas, upload.array("images", 5), uploadProgressImages);
+router.patch("/progress/:progressId", authMiddleware, hanyaPetugas, updateProgressDescription);
+router.delete("/progress-image/:imageId", authMiddleware, hanyaPetugas, deleteProgressImage);
 
 /* Silakan buka baris ini jika kamu memiliki fungsi update status (misal: pending -> selesai)
   PUT: /api/laporan/:id/status
@@ -222,7 +204,9 @@ router.get(
 // GET: /api/laporan/:id
 router.get(
     "/:id",
-    getDetailLaporan
+     authMiddleware,
+    getDetailLaporan,
+    // Tetap butuh auth untuk melihat detail, karena ada data sensitif yang hanya boleh dilihat oleh pelapor dan petugas terkait
 );
 
 export default router;
