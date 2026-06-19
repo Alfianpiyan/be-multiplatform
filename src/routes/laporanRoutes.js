@@ -136,7 +136,7 @@ router.delete(
 );
 
 // POST: /api/laporan/:id/progress
-router.post("/:id/progress", authMiddleware, hanyaPetugas, upload.array("images", 5), uploadProgressImages);
+router.post("/:id/progress", authMiddleware, hanyaPetugas, upload.array("image", 5), uploadProgressImages);
 router.patch("/progress/:progressId", authMiddleware, hanyaPetugas, updateProgressDescription);
 router.delete("/progress-image/:imageId", authMiddleware, hanyaPetugas, deleteProgressImage);
 

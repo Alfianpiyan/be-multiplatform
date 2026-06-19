@@ -2,15 +2,13 @@ import db from "../config/db.js";
 
 export const getUserDashboard = async (req, res) => {
     try {
-
         const userId = req.user.id;
 
         const [laporan] = await db.query(
             `
             SELECT
-                COUNT(*) AS total_laporan,
-
-                SUM(status = 'draft') AS draft,
+                -- ✅ Menggunakan SUM agar total_laporan hanya menghitung yang statusnya BUKAN draft
+                SUM(status != 'draft') AS total_laporan,
 
                 SUM(status = 'pending') AS pending,
 
@@ -39,21 +37,31 @@ export const getUserDashboard = async (req, res) => {
             [userId]
         );
 
+        // Menghindari nilai null jika user baru belum memiliki data laporan sama sekali
+        const dataLaporan = laporan[0] ? {
+            total_laporan: Number(laporan[0].total_laporan || 0),
+            draft: Number(laporan[0].draft || 0),
+            pending: Number(laporan[0].pending || 0),
+            diperiksa: Number(laporan[0].diperiksa || 0),
+            diverifikasi: Number(laporan[0].diverifikasi || 0),
+            tindak_lanjut: Number(laporan[0].tindak_lanjut || 0),
+            selesai: Number(laporan[0].selesai || 0),
+        } : {
+            total_laporan: 0, draft: 0, pending: 0, diperiksa: 0, diverifikasi: 0, tindak_lanjut: 0, selesai: 0
+        };
+
         res.status(200).json({
             message: "Dashboard user berhasil diambil",
             data: {
-                ...laporan[0],
-                unread_notifications:
-                    notifications[0].unread_notifications
+                ...dataLaporan,
+                unread_notifications: notifications[0]?.unread_notifications || 0
             }
         });
 
     } catch (error) {
-
         res.status(500).json({
             message: error.message
         });
-
     }
 };
 

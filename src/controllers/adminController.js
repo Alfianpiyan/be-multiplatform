@@ -270,23 +270,23 @@ export const updateStatusLaporan = async (req, res) => {
         );
 
         await db.query(
-            `
-            INSERT INTO notifications
-            (
-                user_id,
-                laporan_id,
-                title,
-                message
-            )
-            VALUES (?, ?, ?, ?)
-            `,
-            [
-                laporan[0].user_id,
-                id,
-                "Status Laporan Diperbarui",
-                `Laporan "${laporan[0].title}" sekarang berstatus ${status}`
-            ]
-        );
+    `
+    INSERT INTO notifications
+    (
+        user_id,
+        laporan_id,
+        title,
+        message
+    )
+    VALUES (?, ?, ?, ?)
+    `,
+    [
+        laporan[0].user_id,
+        id,
+        "Status Laporan Diperbarui",
+        `Laporan "${laporan[0].title}" sekarang berstatus ${status}` // 🌟 LIHAT DISINI!
+    ]
+);
 
         res.status(200).json({
             message: "Status laporan berhasil diperbarui"
