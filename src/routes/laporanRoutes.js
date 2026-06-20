@@ -31,6 +31,8 @@ import {
     // updateStatusLaporan 
 } from "../controllers/laporanController.js";
 
+import { getAllKategori } from "../controllers/adminController.js";
+
 import { hanyaPetugas } from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
@@ -38,6 +40,12 @@ const router = express.Router();
 // ========================================================
 // 1. RUTE STATIS / DEFINISIKAN JALUR PASTI (Wajib di Atas)
 // ========================================================
+
+// Jalur penuhnya menjadi: GET /api/laporan/public/kategori
+router.get(
+    "/public/kategori",
+    getAllKategori
+);
 
 // GET: /api/laporan
 router.get(
