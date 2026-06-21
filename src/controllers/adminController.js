@@ -83,57 +83,40 @@ export const createAdmin = async (req, res) => {
 };
 export const getAllLaporan = async (req, res) => {
     try {
-        // Query Dasar menggunakan LEFT JOIN agar data NULL di kategori_id tetap lolos seleksi
         let sql = `
             SELECT
-                laporan.id,
-                laporan.title,
-                laporan.report_description,
-                laporan.city,
-                laporan.city_id,
-                laporan.status,
-                laporan.visibility,
-                laporan.created_at,
-                users.userName,
-                kategori.kategori
+                laporan.id, laporan.title, laporan.report_description,
+                laporan.city, laporan.city_id, laporan.status, laporan.visibility,
+                laporan.created_at, users.userName, kategori.kategori
             FROM laporan
             LEFT JOIN users ON laporan.user_id = users.id
             LEFT JOIN kategori ON laporan.kategori_id = kategori.id
             WHERE 1=1
         `;
-        
         const params = [];
 
-        // 1. Saring status agar tidak menampilkan yang berbentuk draft secara aman
         sql += ` AND LOWER(TRIM(laporan.status)) != 'draft'`;
 
-        // 2. Filter Kota Admin (Jika bukan superadmin)
         if (req.user && req.user.role !== 'superadmin') {
+            // Admin biasa: terkunci ke kota dia sendiri (TIDAK BERUBAH)
             if (req.user.city) {
-                // LOWER dan TRIM disematkan untuk mengantisipasi adanya spasi tidak sengaja di database
                 sql += ` AND LOWER(TRIM(laporan.city)) = LOWER(TRIM(?))`;
                 params.push(req.user.city);
             }
+        } else if (req.query.city) {
+            // 🌟 BARU: superadmin boleh pilih kota mana yang mau dilihat
+            sql += ` AND LOWER(TRIM(laporan.city)) = LOWER(TRIM(?))`;
+            params.push(req.query.city);
         }
 
-        // 3. Urutkan berdasarkan laporan terbaru
         sql += ` ORDER BY laporan.created_at DESC`;
 
-        // Eksekusi Query ke Database
         const [laporan] = await db.query(sql, params);
-        
-        // Response sukses dengan data yang berhasil ditarik
-        return res.status(200).json({
-            message: "Laporan publik berhasil diambil",
-            data: laporan
-        });
-        
+        return res.status(200).json({ message: "Laporan berhasil diambil", data: laporan });
+
     } catch (error) {
         console.error("Terjadi error pada getAllLaporan:", error);
-        return res.status(500).json({
-            message: "Terjadi kesalahan pada server backend: " + error.message,
-            data: []
-        });
+        return res.status(500).json({ message: "Terjadi kesalahan: " + error.message, data: [] });
     }
 };
 
@@ -967,4 +950,31 @@ export const searchLaporan = async (req, res) => {
 
     }
 
+};
+
+export const getAllAdmins = async (req, res) => {
+    try {
+        const [admins] = await db.query(
+            `
+            SELECT
+                users.id,
+                users.userName,
+                users.email,
+                users.city,
+                COUNT(laporan.id) AS total_laporan
+            FROM users
+            LEFT JOIN laporan
+                ON LOWER(TRIM(laporan.city)) = LOWER(TRIM(users.city))
+                AND LOWER(TRIM(laporan.status)) != 'draft'
+            WHERE users.role = 'admin'
+            GROUP BY users.id, users.userName, users.email, users.city
+            ORDER BY users.userName ASC
+            `
+        );
+
+        res.status(200).json({ message: "Daftar admin berhasil diambil", data: admins });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };

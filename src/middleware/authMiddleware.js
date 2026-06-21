@@ -24,6 +24,7 @@ export const authMiddleware = (req, res, next) => {
 
         next();
     } catch (error) {
+        console.log("JWT ERROR DETAIL:", error.name, "-", error.message); // 👈 tambahin ini
         // Token kadaluwarsa atau palsu
         return res.status(401).json({
             error: "UNAUTHORIZED",

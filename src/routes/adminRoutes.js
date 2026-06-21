@@ -1,7 +1,7 @@
 import express from "express";
 
-import {authMiddleware} from "../middleware/authMiddleware.js";
-import {roleMiddleware} from "../middleware/roleMiddleware.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { roleMiddleware } from "../middleware/roleMiddleware.js";
 
 import {
     createAdmin,
@@ -14,10 +14,19 @@ import {
     createKategori,
     getAllKategori,
     updateKategori,
-    deleteKategori
+    deleteKategori,
+    getAllAdmins
 } from "../controllers/adminController.js";
 
 const router = express.Router();
+
+// 🌟 Duplikat route "/admins" sudah dihapus (sebelumnya ke-define 2x persis sama)
+router.get(
+    "/admins",
+    authMiddleware,
+    roleMiddleware("superadmin"),
+    getAllAdmins
+);
 
 router.post(
     "/createAdmin",
@@ -27,7 +36,7 @@ router.post(
 );
 
 router.get(
-    "/",
+    "/semua",
     authMiddleware,
     roleMiddleware("admin", "superadmin"),
     getAllLaporan
@@ -50,21 +59,21 @@ router.patch(
 router.patch(
     "/:id/verifikasi",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"),
+    roleMiddleware("admin"),
     verifyLaporan
 );
 
 router.patch(
     "/:id/tolak",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"),
+    roleMiddleware("admin"),
     rejectLaporan
 );
 
 router.patch(
     "/:id/status",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"),
+    roleMiddleware("admin"),
     updateStatusLaporan
 );
 
@@ -73,26 +82,25 @@ router.get(
     getAllKategori
 );
 
-
 router.post(
     "/kategori",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"),
+    roleMiddleware("admin"),
     createKategori
 );
 
 router.patch(
     "/kategori/:id",
     authMiddleware,
-    roleMiddleware("admin", "superadmin"),
+    roleMiddleware("admin"),
     updateKategori
 );
 
 router.delete(
     "/kategori/:id",
     authMiddleware,
-    roleMiddleware("admin","superadmin"),
+    roleMiddleware("admin"),
     deleteKategori
 );
 
-export default router;
+export default router; 

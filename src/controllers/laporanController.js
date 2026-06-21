@@ -1003,7 +1003,8 @@ export const getMyDetailLaporan = async (req, res) => {
             message: "Detail laporan berhasil diambil",
             data: {
                 ...laporan[0],
-                images
+                before_images: images,   // ← konsisten dengan getDetailLaporan
+                progress_images: []      // getMyDetailLaporan tidak query progress, kirim array kosong
             }
         });
 

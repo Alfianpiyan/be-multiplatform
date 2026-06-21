@@ -86,8 +86,8 @@ export const getAdminDashboard = async (req, res) => {
                 SUM(status = 'selesai') AS selesai
 
             FROM laporan
-
             WHERE city = ?
+            AND LOWER(TRIM(status)) != 'draft'
             `,
             [city]
         );
@@ -143,22 +143,16 @@ export const getSuperAdminDashboard = async (req, res) => {
             `
             SELECT
                 COUNT(*) AS total_laporan,
-
                 SUM(status = 'pending') AS pending,
-
                 SUM(status = 'diperiksa') AS diperiksa,
-
                 SUM(status = 'diverifikasi') AS diverifikasi,
-
                 SUM(status = 'tindak_lanjut') AS tindak_lanjut,
-
                 SUM(status = 'selesai') AS selesai
-
             FROM laporan
+            WHERE LOWER(TRIM(status)) != 'draft'
             `
         );
-
-        res.status(200).json({
+                res.status(200).json({
             message: "Dashboard superadmin berhasil diambil",
             data: {
                 total_users:

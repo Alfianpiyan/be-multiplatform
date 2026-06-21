@@ -13,8 +13,6 @@ import { roleMiddleware, hanyaPetugas } from "./middleware/roleMiddleware.js";
 const app = express();
 
 // ==================== CORS SETUP (Optimized for Dev) ====================
-// Menggunakan '*' akan mempermudah akses dari mobile (emulator/HP) 
-// selama fase pengembangan.
 app.use(cors({
     origin: '*', 
     credentials: true,
@@ -33,8 +31,18 @@ app.get("/", (req, res) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/laporan", laporanRoutes);
+
+// 🌟 PENTING: adminRoutes WAJIB di-mount SEBELUM laporanRoutes.
+// Alasan: laporanRoutes punya wildcard "GET /:id" di baris paling bawah.
+// Kalau laporanRoutes di-mount duluan, path spesifik milik adminRoutes
+// seperti "/semua" dan "/admins" akan "ketelan" duluan oleh "/:id"
+// (dianggap id="semua"/id="admins"), sehingga query ke DB gagal & 404.
+// Dengan adminRoutes duluan, path spesifiknya match duluan dengan benar,
+// dan request yang memang tidak ada di adminRoutes akan otomatis lanjut
+// (fallthrough) ke laporanRoutes seperti biasa.
 app.use("/api/laporan", adminRoutes);
+app.use("/api/laporan", laporanRoutes);
+
 app.use("/api/notifications", notificationRoutes);
 
 // Protected Routes
